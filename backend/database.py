@@ -2,6 +2,7 @@
 database.py - Supabase connection with automatic local/demo fallback for Tiffin Center
 """
 
+import logging
 import os
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -10,12 +11,13 @@ from typing import Any, Dict, List, Optional
 from dotenv import load_dotenv
 
 load_dotenv()
+logger = logging.getLogger(__name__)
 
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
 
 # ---------------------------------------------------------------------------
-# In-memory Local Database Mock (used when Supabase is not configured)
+# In-memory Local Database Mock (used when Supabase is not configured or offline)
 # ---------------------------------------------------------------------------
 
 class MockQuery:
@@ -193,23 +195,183 @@ class LocalMockDatabase:
 
 
 # ---------------------------------------------------------------------------
+# Resilient Database Wrapper (Supabase + Automatic Local Fallback)
+# ---------------------------------------------------------------------------
+
+class ResilientQuery:
+    def __init__(self, remote_query: Any, local_query: Any):
+        self._remote = remote_query
+        self._local = local_query
+
+    def select(self, *args, **kwargs):
+        if self._remote:
+            try:
+                self._remote = self._remote.select(*args, **kwargs)
+            except Exception:
+                self._remote = None
+        self._local = self._local.select(*args, **kwargs)
+        return self
+
+    def eq(self, *args, **kwargs):
+        if self._remote:
+            try:
+                self._remote = self._remote.eq(*args, **kwargs)
+            except Exception:
+                self._remote = None
+        self._local = self._local.eq(*args, **kwargs)
+        return self
+
+    def in_(self, *args, **kwargs):
+        if self._remote:
+            try:
+                self._remote = self._remote.in_(*args, **kwargs)
+            except Exception:
+                self._remote = None
+        self._local = self._local.in_(*args, **kwargs)
+        return self
+
+    def gte(self, *args, **kwargs):
+        if self._remote:
+            try:
+                self._remote = self._remote.gte(*args, **kwargs)
+            except Exception:
+                self._remote = None
+        self._local = self._local.gte(*args, **kwargs)
+        return self
+
+    def lte(self, *args, **kwargs):
+        if self._remote:
+            try:
+                self._remote = self._remote.lte(*args, **kwargs)
+            except Exception:
+                self._remote = None
+        self._local = self._local.lte(*args, **kwargs)
+        return self
+
+    def lt(self, *args, **kwargs):
+        if self._remote:
+            try:
+                self._remote = self._remote.lt(*args, **kwargs)
+            except Exception:
+                self._remote = None
+        self._local = self._local.lt(*args, **kwargs)
+        return self
+
+    def order(self, *args, **kwargs):
+        if self._remote:
+            try:
+                self._remote = self._remote.order(*args, **kwargs)
+            except Exception:
+                self._remote = None
+        self._local = self._local.order(*args, **kwargs)
+        return self
+
+    def range(self, *args, **kwargs):
+        if self._remote:
+            try:
+                self._remote = self._remote.range(*args, **kwargs)
+            except Exception:
+                self._remote = None
+        self._local = self._local.range(*args, **kwargs)
+        return self
+
+    def execute(self):
+        if self._remote:
+            try:
+                res = self._remote.execute()
+                if res and hasattr(res, "data") and res.data is not None:
+                    return res
+            except Exception as exc:
+                logger.warning("Supabase query failed (%s); seamlessly using local store", exc)
+        return self._local.execute()
+
+
+class ResilientTable:
+    def __init__(self, remote_table: Any, local_table: Any):
+        self._remote = remote_table
+        self._local = local_table
+
+    def select(self, columns: str = "*"):
+        remote_q = None
+        if self._remote:
+            try:
+                remote_q = self._remote.select(columns)
+            except Exception:
+                remote_q = None
+        local_q = self._local.select(columns)
+        return ResilientQuery(remote_q, local_q)
+
+    def insert(self, payload: Any):
+        # Try inserting to remote
+        if self._remote:
+            try:
+                res = self._remote.insert(payload).execute()
+                if res and hasattr(res, "data"):
+                    # Sync into local store too
+                    self._local.insert(payload)
+                    return res
+            except Exception as exc:
+                logger.warning("Supabase insert failed (%s); saving locally", exc)
+        return self._local.insert(payload)
+
+    def update(self, payload: Dict[str, Any]):
+        remote_q = None
+        if self._remote:
+            try:
+                remote_q = self._remote.update(payload)
+            except Exception:
+                remote_q = None
+        local_q = self._local.update(payload)
+        return ResilientQuery(remote_q, local_q)
+
+    def delete(self):
+        remote_q = None
+        if self._remote:
+            try:
+                remote_q = self._remote.delete()
+            except Exception:
+                remote_q = None
+        local_q = self._local.delete()
+        return ResilientQuery(remote_q, local_q)
+
+
+class ResilientClient:
+    def __init__(self, raw_supabase: Any, local_db: LocalMockDatabase):
+        self._supabase = raw_supabase
+        self._local = local_db
+
+    def table(self, name: str):
+        remote_t = None
+        if self._supabase:
+            try:
+                remote_t = self._supabase.table(name)
+            except Exception:
+                remote_t = None
+        local_t = self._local.table(name)
+        return ResilientTable(remote_t, local_t)
+
+
+# ---------------------------------------------------------------------------
 # Database Client Provider
 # ---------------------------------------------------------------------------
 
-_client = None
+_resilient_db = None
 _local_db = None
 
 def get_db():
-    """Return Supabase client if configured, otherwise returns local mock database."""
-    global _client, _local_db
+    """
+    Return resilient database client that queries Supabase when available
+    and falls back to local storage on network errors, ensuring zero crashes.
+    """
+    global _resilient_db, _local_db
 
-    # If already initialized
-    if _client is not None:
-        return _client
-    if _local_db is not None:
-        return _local_db
+    if _resilient_db is not None:
+        return _resilient_db
 
-    # Check if real Supabase credentials are provided
+    if _local_db is None:
+        _local_db = LocalMockDatabase()
+
+    raw_supabase = None
     is_placeholder = (
         not SUPABASE_URL
         or not SUPABASE_KEY
@@ -220,15 +382,12 @@ def get_db():
     if not is_placeholder:
         try:
             from supabase import create_client
-            _client = create_client(SUPABASE_URL, SUPABASE_KEY)
-            return _client
-        except Exception:
-            pass
+            raw_supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+        except Exception as exc:
+            logger.warning("Failed to initialize Supabase client: %s", exc)
 
-    # Use local mock database
-    if _local_db is None:
-        _local_db = LocalMockDatabase()
-    return _local_db
+    _resilient_db = ResilientClient(raw_supabase, _local_db)
+    return _resilient_db
 
 
 # ---------------------------------------------------------------------------
