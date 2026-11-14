@@ -379,6 +379,62 @@ async def today_revenue_api(days: int = 30, db: Any = Depends(get_db)) -> Any:
 
 
 # ---------------------------------------------------------------------------
+# Feedback endpoints
+# ---------------------------------------------------------------------------
+
+
+@app.post("/api/feedback", tags=["Feedback"])
+async def submit_customer_feedback(request: Request, db: Any = Depends(get_db)) -> Dict[str, Any]:
+    """Submit customer rating and feedback, automatically awarding 10 loyalty points."""
+    body = await request.json()
+    phone = str(body.get("phone", "")).strip()
+    name = str(body.get("name", "")).strip() or "గ్రాహకుడు"
+    rating = int(body.get("rating", 5))
+    comment = str(body.get("comment", "")).strip()
+
+    customer_id = None
+    points_total = 10
+    if phone:
+        clean_phone = phone if phone.startswith("+") else f"+91{phone.lstrip('0')}"
+        c_res = db.table("customers").select("id, loyalty_points").eq("phone_number", clean_phone).execute()
+        now_iso = datetime.now(timezone.utc).isoformat()
+        if c_res.data:
+            customer_id = c_res.data[0]["id"]
+            current_pts = int(c_res.data[0].get("loyalty_points", 0))
+            points_total = current_pts + 10
+            db.table("customers").update({
+                "loyalty_points": points_total,
+                "last_visit": now_iso
+            }).eq("id", customer_id).execute()
+        else:
+            new_c = db.table("customers").insert({
+                "phone_number": clean_phone,
+                "name": name,
+                "loyalty_points": 10,
+                "preferred_language": "te",
+                "last_visit": now_iso,
+            }).execute()
+            if new_c.data:
+                customer_id = new_c.data[0]["id"]
+
+    sentiment = "positive" if rating >= 4 else ("neutral" if rating == 3 else "negative")
+    db.table("feedback").insert({
+        "customer_id": str(customer_id) if customer_id else "guest",
+        "rating": rating,
+        "comment_original": comment,
+        "sentiment": sentiment,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }).execute()
+
+    return {
+        "status": "success",
+        "message": "ధన్యవాదాలు! మీ అభిప్రాయం రికార్డ్ అయింది. మీకు 10 Loyalty Points వచ్చాయి! 🎁",
+        "loyalty_points_earned": 10,
+        "total_points": points_total,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Customer endpoints
 # ---------------------------------------------------------------------------
 

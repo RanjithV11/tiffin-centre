@@ -1,10 +1,10 @@
 import type { Metadata } from 'next'
 import './globals.css'
-import { Sidebar } from '@/components/Sidebar'
+import { AppShell } from '@/components/AppShell'
 
 export const metadata: Metadata = {
-  title: 'Sri Lakshmi Tiffin — Owner Dashboard',
-  description: 'Owner dashboard for Sri Lakshmi Tiffin Centre, Warangal',
+  title: 'Sri Lakshmi Tiffin Center — Warangal',
+  description: 'శ్రీ లక్ష్మి టిఫిన్ సెంటర్ - వరంగల్ | Telugu Tiffin Menu & Feedback',
 }
 
 export default function RootLayout({
@@ -23,10 +23,7 @@ export default function RootLayout({
         />
       </head>
       <body className="bg-zinc-950 text-zinc-100 antialiased min-h-screen flex font-sans">
-        <Sidebar />
-        <main className="flex-1 ml-64 min-h-screen overflow-y-auto">
-          {children}
-        </main>
+        <AppShell>{children}</AppShell>
       </body>
     </html>
   )

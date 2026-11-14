@@ -138,6 +138,30 @@ export async function fetchFeedback(): Promise<FeedbackEntry[]> {
   }))
 }
 
+export interface CustomerFeedbackInput {
+  name?: string
+  phone?: string
+  rating: number
+  comment?: string
+  table_number?: number
+}
+
+export interface FeedbackSubmissionResult {
+  status: string
+  message: string
+  loyalty_points_earned: number
+  total_points?: number
+}
+
+export async function submitCustomerFeedback(
+  data: CustomerFeedbackInput,
+): Promise<FeedbackSubmissionResult> {
+  return request<FeedbackSubmissionResult>('/api/feedback', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  })
+}
+
 export async function fetchRevenue(days = 30): Promise<RevenueData[]> {
   const raw = await request<any>(`/api/analytics/revenue?days=${days}`)
   if (Array.isArray(raw)) return raw
