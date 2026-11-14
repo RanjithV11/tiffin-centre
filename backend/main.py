@@ -515,7 +515,7 @@ async def get_table_qr(table_number: int, db: Any = Depends(get_db)) -> FileResp
     if table_number < 1 or table_number > 999:
         raise HTTPException(status_code=400, detail="Table number must be between 1 and 999")
 
-    wa_number = os.getenv("WHATSAPP_PHONE_NUMBER_ID", "919848012345")
+    wa_number = os.getenv("WHATSAPP_PHONE_NUMBER", os.getenv("WHATSAPP_PHONE_NUMBER_ID", "917097760912"))
     try:
         file_path = generate_table_qr(
             table_number=table_number,
@@ -538,7 +538,7 @@ async def preview_table_qr(table_number: int, db: Any = Depends(get_db)) -> Dict
     if table_number < 1 or table_number > 999:
         raise HTTPException(status_code=400, detail="Table number must be between 1 and 999")
 
-    wa_number = os.getenv("WHATSAPP_PHONE_NUMBER_ID", "919848012345")
+    wa_number = os.getenv("WHATSAPP_PHONE_NUMBER", os.getenv("WHATSAPP_PHONE_NUMBER_ID", "917097760912"))
     clean_number = wa_number.lstrip("+").replace(" ", "").replace("-", "") or "919848012345"
     data_url = generate_qr_base64(table_number, clean_number)
     from urllib.parse import quote

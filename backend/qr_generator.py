@@ -40,7 +40,7 @@ def generate_table_qr(
     # Sanitise phone number (remove + and spaces)
     clean_number = whatsapp_number.lstrip("+").replace(" ", "").replace("-", "")
     if not clean_number:
-        clean_number = "919848012345"
+        clean_number = "917097760912"
     whatsapp_url = f"https://wa.me/{clean_number}?text={encoded_message}"
 
     # --- Generate QR code ---

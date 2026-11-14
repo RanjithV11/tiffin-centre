@@ -85,7 +85,7 @@ function CustomerMenuContent() {
 
   // Build WhatsApp order link
   const whatsappOrderUrl = useMemo(() => {
-    const waNumber = '919848012345'
+    const waNumber = '917097760912'
     if (selectedItems.length === 0) {
       const msg = encodeURIComponent(`నమస్కారం! Table ${tableParam} నుండి మెను ఆర్డర్ చేయాలనుకుంటున్నాను.`)
       return `https://wa.me/${waNumber}?text=${msg}`
